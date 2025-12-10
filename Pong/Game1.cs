@@ -13,7 +13,7 @@ namespace Pong
         Vector2 ballSize;
         Vector2 ballVelocity;
         Random rnd = new Random();
-        float ballSpeedIncrease = 1.05f;
+        float ballSpeedIncrease = 1.15f;
 
         Texture2D PongTexture;
         Vector2 PongPosition;
@@ -27,6 +27,7 @@ namespace Pong
 
         int scorePlayer1 = 0;
         int scorePlayer2 = 0;
+        bool gameOver = false;
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
         SpriteFont scoreFont;
@@ -36,12 +37,15 @@ namespace Pong
             _graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
+            _graphics.PreferredBackBufferWidth = 1280;
+            _graphics.PreferredBackBufferHeight = 720;
+            _graphics.ApplyChanges();
         }
 
         protected override void Initialize()
         {
             ballPosition = new Vector2(_graphics.PreferredBackBufferWidth / 2, _graphics.PreferredBackBufferHeight / 2);
-            ballSpeed = 300f; // Geschwindigkeit in Pixel/Sekunde
+            ballSpeed = 350f; // Geschwindigkeit in Pixel/Sekunde
             ballSize = new Vector2(30, 30);
 
             // initiale Ballrichtung zufällig
@@ -64,7 +68,7 @@ namespace Pong
         void ResetBall(bool toRight)
             
         {
-            ballSpeed = 300f; // Reset der Ballgeschwindigkeit
+            ballSpeed = 350f; // Reset der Ballgeschwindigkeit
             ballPosition = new Vector2(_graphics.PreferredBackBufferWidth / 2, _graphics.PreferredBackBufferHeight / 2);
 
             // Winkel zwischen -25 und 25 Grad
@@ -143,6 +147,25 @@ namespace Pong
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
+            // Check for Reset
+            if (gameOver)
+            {
+                if (Keyboard.GetState().IsKeyDown(Keys.Space))
+                {
+                    scorePlayer1 = 0;
+                    scorePlayer2 = 0;
+                    gameOver = false;
+                    ResetBall(rnd.Next(0, 2) == 0);
+                }
+                return; // Stop update if game is over
+            }
+
+            // Check Win Condition
+            if (scorePlayer1 >= 5 || scorePlayer2 >= 5)
+            {
+                gameOver = true;
+            }
+
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             // Ballbewegung
@@ -200,6 +223,8 @@ namespace Pong
 
                         // Ballgeschwindigkeit erhöhen
                         ballSpeed *= ballSpeedIncrease;
+                        // CAP SPEED
+                        if (ballSpeed > 1500f) ballSpeed = 1500f;
 
                     }
                     else
@@ -235,6 +260,8 @@ namespace Pong
 
                         // Ballgeschwindigkeit erhöhen
                         ballSpeed *= ballSpeedIncrease;
+                        // CAP SPEED
+                        if (ballSpeed > 1500f) ballSpeed = 1500f;
                     }
                     else
                     {
@@ -260,30 +287,33 @@ namespace Pong
             // Goal links oder rechts -> ResetBall
             if (ballRect.Left <= 0)
             {
-                scorePlayer1 += 1;
+                scorePlayer2 += 1;
                 ResetBall(true);
             }
             else if (ballRect.Right >= screenW)
             {
-                scorePlayer2 += 1;
+                scorePlayer1 += 1;
                 ResetBall(false);
             }
 
-            // Maussteuerung für die Paddles mit gedrückter linker Maustaste
+            // --- Player 1 (Mouse Control) ---
             var mouse = Mouse.GetState();
-            int halfWidth = _graphics.PreferredBackBufferWidth / 2;
-            if (mouse.LeftButton == ButtonState.Pressed)
-            {
-                if (mouse.X < halfWidth)
-                {
-                    PongPosition.Y = mouse.Y;
-                }
-                else
-                {
-                    Pong2Position.Y = mouse.Y;
-                }
-            }
+            // Mouse controls Left Paddle
+            PongPosition.Y = mouse.Y;
             PongPosition.Y = MathHelper.Clamp(PongPosition.Y, PongSize.Y / 2f, _graphics.PreferredBackBufferHeight - PongSize.Y / 2f);
+
+            // --- Player 2 (AI Control) ---
+            float aiSpeed = 220f; // Slightly slower than base ball speed (300) to make it beatable
+            
+            // Basic tracking
+            if (ballPosition.Y < Pong2Position.Y - 10)
+            {
+                Pong2Position.Y -= aiSpeed * dt;
+            }
+            else if (ballPosition.Y > Pong2Position.Y + 10)
+            {
+                Pong2Position.Y += aiSpeed * dt;
+            }
             Pong2Position.Y = MathHelper.Clamp(Pong2Position.Y, Pong2Size.Y / 2f, _graphics.PreferredBackBufferHeight - Pong2Size.Y / 2f);
 
             base.Update(gameTime);
@@ -312,6 +342,21 @@ namespace Pong
             _spriteBatch.Draw(PongTexture, Pong2Position, null, Color.White, Pong2Rotation, origin, scale2, SpriteEffects.None, 0f);
             _spriteBatch.DrawString(scoreFont, $"{scorePlayer2}", new Vector2(20, 20), Color.White);
             _spriteBatch.DrawString(scoreFont, $"{scorePlayer1}", new Vector2(_graphics.PreferredBackBufferWidth - 60, 20), Color.White);
+
+            if (gameOver)
+            {
+                string msg = "Game Over!";
+                string subMsg = "Press [Space] to Restart";
+
+                // Center the text
+                Vector2 msgSize = scoreFont.MeasureString(msg);
+                Vector2 subMsgSize = scoreFont.MeasureString(subMsg);
+                Vector2 screenCenter = new Vector2(_graphics.PreferredBackBufferWidth / 2, _graphics.PreferredBackBufferHeight / 2);
+
+                _spriteBatch.DrawString(scoreFont, msg, screenCenter - msgSize / 2 - new Vector2(0, 30), Color.Red);
+                _spriteBatch.DrawString(scoreFont, subMsg, screenCenter - subMsgSize / 2 + new Vector2(0, 10), Color.Yellow);
+            }
+
             _spriteBatch.End();
 
             base.Draw(gameTime);
