@@ -2,6 +2,8 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using System.Collections.Generic;
+using Pong;
 
 namespace Pong
 {
@@ -25,6 +27,15 @@ namespace Pong
         Vector2 Pong2Size;
         float Pong2Rotation;
 
+        // Visual Polish
+        ParticleSystem particleSystem;
+        List<Vector2> ballTrail;
+        float trailTimer = 0f;
+        float shakeDuration = 0f;
+        float shakeMagnitude = 0f;
+        Vector2 shakeOffset = Vector2.Zero;
+        Color skyColor = new Color(200, 230, 255); // Brighter sky background
+
         int scorePlayer1 = 0;
         int scorePlayer2 = 0;
         bool gameOver = false;
@@ -47,6 +58,8 @@ namespace Pong
             ballPosition = new Vector2(_graphics.PreferredBackBufferWidth / 2, _graphics.PreferredBackBufferHeight / 2);
             ballSpeed = 350f; // Geschwindigkeit in Pixel/Sekunde
             ballSize = new Vector2(30, 30);
+
+            ballTrail = new List<Vector2>();
 
             // initiale Ballrichtung zufällig
             ResetBall(rnd.Next(0, 2) == 0);
@@ -140,10 +153,36 @@ namespace Pong
             PongTexture = Content.Load<Texture2D>("pngegg");
             Pong2Texture = Content.Load<Texture2D>("pngegg");
             scoreFont = Content.Load<SpriteFont>("Arial");
+
+            particleSystem = new ParticleSystem(ballTexture); // Recycle ball texture for particles
         }
 
         protected override void Update(GameTime gameTime)
         {
+            float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            // --- Visual Updates ---
+            particleSystem.Update(dt);
+
+            // Screen Shake
+            if (shakeDuration > 0)
+            {
+                shakeDuration -= dt;
+                shakeOffset = new Vector2((float)(rnd.NextDouble() * 2 - 1), (float)(rnd.NextDouble() * 2 - 1)) * shakeMagnitude;
+            }
+            else
+            {
+                shakeOffset = Vector2.Zero;
+            }
+
+            // Ball Trail
+            trailTimer += dt;
+            if (trailTimer > 0.016f) // Record ~60fps
+            {
+                trailTimer = 0;
+                ballTrail.Add(ballPosition);
+                if (ballTrail.Count > 20) ballTrail.RemoveAt(0);
+            }
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
@@ -166,7 +205,9 @@ namespace Pong
                 gameOver = true;
             }
 
-            float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+
+            // Moved dt to top of Update
 
             // Ballbewegung
             ballPosition += ballVelocity * dt;
@@ -187,11 +228,21 @@ namespace Pong
             {
                 ballVelocity.Y = -ballVelocity.Y;
                 ballPosition.Y = ballRadius + 1;
+                
+                // Wall Impact Effect
+                particleSystem.Emit(ballPosition, 10, Color.DarkSlateBlue, 150f);
+                shakeDuration = 0.1f;
+                shakeMagnitude = 3f;
             }
             else if (ballRect.Bottom >= screenH && ballVelocity.Y > 0)
             {
                 ballVelocity.Y = -ballVelocity.Y;
                 ballPosition.Y = screenH - ballRadius - 1;
+                
+                // Wall Impact Effect
+                particleSystem.Emit(ballPosition, 10, Color.DarkSlateBlue, 150f);
+                shakeDuration = 0.1f;
+                shakeMagnitude = 3f;
             }
 
             // Skala der Paddles (wie beim Zeichnen)
@@ -240,6 +291,11 @@ namespace Pong
 
                     // Ball aus dem Paddle heraus schieben, damit er nicht "klebt"
                     ballPosition += normal1 * (penetration1 + 0.5f);
+
+                    // Impact FX
+                    particleSystem.Emit(ballPosition, 20, Color.DarkTurquoise, 300f);
+                    shakeDuration = 0.2f;
+                    shakeMagnitude = 10f;
                 }
             }
 
@@ -274,6 +330,11 @@ namespace Pong
                     }
 
                     ballPosition += normal2 * (penetration2 + 0.5f);
+
+                    // Impact FX
+                    particleSystem.Emit(ballPosition, 20, Color.DeepPink, 300f);
+                    shakeDuration = 0.2f;
+                    shakeMagnitude = 10f;
                 }
             }
 
@@ -322,13 +383,29 @@ namespace Pong
 
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(Color.CornflowerBlue);
+            GraphicsDevice.Clear(skyColor);
 
             // TODO: Add your drawing code here#
-            _spriteBatch.Begin();
+            var transform = Matrix.CreateTranslation(new Vector3(shakeOffset, 0));
+            _spriteBatch.Begin(transformMatrix: transform);
+            
             var scale = new Vector2(ballSize.X / ballTexture.Width, ballSize.Y / ballTexture.Height);
-            _spriteBatch.Draw(ballTexture, ballPosition, null, Color.White, 0f,
-                new Vector2(ballTexture.Width / 2, ballTexture.Height / 2), scale, SpriteEffects.None, 0f);
+            Vector2 ballOrigin = new Vector2(ballTexture.Width / 2, ballTexture.Height / 2);
+
+            // Draw Trail
+            for (int i = 0; i < ballTrail.Count; i++)
+            {
+                float alpha = (float)i / ballTrail.Count;
+                float trailScale = 1.0f - (1.0f - alpha) * 0.5f; // Gets smaller
+                _spriteBatch.Draw(ballTexture, ballTrail[i], null, Color.DarkSlateBlue * alpha * 0.5f, 0f, 
+                    ballOrigin, scale * trailScale, SpriteEffects.None, 0f);
+            }
+
+            _spriteBatch.Draw(ballTexture, ballPosition, null, Color.DarkSlateBlue, 0f,
+                ballOrigin, scale, SpriteEffects.None, 0f);
+            
+            // Draw Particles
+            particleSystem.Draw(_spriteBatch);
 
             var textureSize = new Vector2(PongTexture.Width, PongTexture.Height);
             var origin = textureSize / 2f;
@@ -336,12 +413,12 @@ namespace Pong
             var scale2 = new Vector2(Pong2Size.X / textureSize.X, Pong2Size.Y / textureSize.Y);
 
             // Paddle 1
-            _spriteBatch.Draw(PongTexture, PongPosition, null, Color.White, PongRotation, origin, scale1, SpriteEffects.None, 0f);
+            _spriteBatch.Draw(PongTexture, PongPosition, null, Color.DarkTurquoise, PongRotation, origin, scale1, SpriteEffects.None, 0f);
 
             // Paddle 2
-            _spriteBatch.Draw(PongTexture, Pong2Position, null, Color.White, Pong2Rotation, origin, scale2, SpriteEffects.None, 0f);
-            _spriteBatch.DrawString(scoreFont, $"{scorePlayer2}", new Vector2(20, 20), Color.White);
-            _spriteBatch.DrawString(scoreFont, $"{scorePlayer1}", new Vector2(_graphics.PreferredBackBufferWidth - 60, 20), Color.White);
+            _spriteBatch.Draw(PongTexture, Pong2Position, null, Color.DeepPink, Pong2Rotation, origin, scale2, SpriteEffects.None, 0f);
+            _spriteBatch.DrawString(scoreFont, $"{scorePlayer2}", new Vector2(20, 20), Color.DarkSlateBlue);
+            _spriteBatch.DrawString(scoreFont, $"{scorePlayer1}", new Vector2(_graphics.PreferredBackBufferWidth - 60, 20), Color.DarkSlateBlue);
 
             if (gameOver)
             {
