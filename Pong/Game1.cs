@@ -36,6 +36,11 @@ namespace Pong
         Vector2 shakeOffset = Vector2.Zero;
         Color skyColor = new Color(200, 230, 255); // Brighter sky background
 
+        float prevPongY;
+        float prevPong2Y;
+        float currentPongVelocityY;
+        float currentPong2VelocityY;
+
         int scorePlayer1 = 0;
         int scorePlayer2 = 0;
         bool gameOver = false;
@@ -160,6 +165,10 @@ namespace Pong
         protected override void Update(GameTime gameTime)
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            // Store previous positions
+            prevPongY = PongPosition.Y;
+            prevPong2Y = Pong2Position.Y;
 
             // --- Visual Updates ---
             particleSystem.Update(dt);
@@ -378,6 +387,13 @@ namespace Pong
             Pong2Position.Y = MathHelper.Clamp(Pong2Position.Y, Pong2Size.Y / 2f, _graphics.PreferredBackBufferHeight - Pong2Size.Y / 2f);
 
             base.Update(gameTime);
+            
+            // Calculate Velocity for Tweening (pixels per second)
+            if (dt > 0)
+            {
+                currentPongVelocityY = (PongPosition.Y - prevPongY) / dt;
+                currentPong2VelocityY = (Pong2Position.Y - prevPong2Y) / dt;
+            }
         }
 
 
@@ -412,11 +428,26 @@ namespace Pong
             var scale1 = new Vector2(PongSize.X / textureSize.X, PongSize.Y / textureSize.Y);
             var scale2 = new Vector2(Pong2Size.X / textureSize.X, Pong2Size.Y / textureSize.Y);
 
+            // Apply Tweening (Squash & Stretch + Tilt)
+            // Player 1
+            float stretch1 = 1.0f + Math.Abs(currentPongVelocityY) * 0.0005f;
+            stretch1 = MathHelper.Clamp(stretch1, 1.0f, 1.6f); // Max 60% stretch
+            Vector2 drawScale1 = scale1;
+            drawScale1.X /= stretch1;
+            drawScale1.Y *= stretch1;
+
+            // Player 2
+            float stretch2 = 1.0f + Math.Abs(currentPong2VelocityY) * 0.0005f;
+            stretch2 = MathHelper.Clamp(stretch2, 1.0f, 1.6f);
+            Vector2 drawScale2 = scale2;
+            drawScale2.X /= stretch2;
+            drawScale2.Y *= stretch2;
+
             // Paddle 1
-            _spriteBatch.Draw(PongTexture, PongPosition, null, Color.DarkTurquoise, PongRotation, origin, scale1, SpriteEffects.None, 0f);
+            _spriteBatch.Draw(PongTexture, PongPosition, null, Color.DarkTurquoise, PongRotation, origin, drawScale1, SpriteEffects.None, 0f);
 
             // Paddle 2
-            _spriteBatch.Draw(PongTexture, Pong2Position, null, Color.DeepPink, Pong2Rotation, origin, scale2, SpriteEffects.None, 0f);
+            _spriteBatch.Draw(PongTexture, Pong2Position, null, Color.DeepPink, Pong2Rotation, origin, drawScale2, SpriteEffects.None, 0f);
             _spriteBatch.DrawString(scoreFont, $"{scorePlayer2}", new Vector2(20, 20), Color.DarkSlateBlue);
             _spriteBatch.DrawString(scoreFont, $"{scorePlayer1}", new Vector2(_graphics.PreferredBackBufferWidth - 60, 20), Color.DarkSlateBlue);
 
